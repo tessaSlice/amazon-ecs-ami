@@ -11,6 +11,10 @@ sudo dnf versionlock 'datacenter-gpu-manager*'
 # dcgm-init connects via /run/nvidia-dcgm/nv-hostengine (matching ECS MI behavior)
 sudo mkdir -p /etc/systemd/system/nvidia-dcgm.service.d
 sudo tee /etc/systemd/system/nvidia-dcgm.service.d/override.conf <<'EOF'
+[Unit]
+After=nvidia-persistenced.service
+Wants=nvidia-persistenced.service
+
 [Service]
 ExecStart=
 ExecStart=/usr/bin/nv-hostengine -n --service-account nvidia-dcgm --domain-socket /run/nvidia-dcgm/nv-hostengine
