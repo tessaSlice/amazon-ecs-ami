@@ -30,4 +30,5 @@ sudo systemctl daemon-reload
 
 ### Enable DCGM and dcgm-init services
 sudo systemctl enable nvidia-dcgm
-sudo systemctl enable dcgm-init
+### TODO: remove the echo statement once we add dcgm-init into the RPM
+sudo systemctl enable dcgm-init || echo "dcgm-init service failed to start up"
