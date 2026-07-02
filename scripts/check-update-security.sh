@@ -139,18 +139,12 @@ instance_id=$(aws ec2 run-instances \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value='$platform-check-update-security'}]' |
     jq -r '.Instances[0].InstanceId')
 
-# Read pinned major versions for AL2023 GPU filtering
+# Read pinned major version for AL2023 GPU filtering
 pinned_major=""
-dcgm_pinned_major=""
 if [ "$platform" = "al2023_gpu" ]; then
     pinned_major=$(sed -n '/variable "nvidia_driver_major_al2023" {/,/}/p' variables.pkr.hcl | grep "default" | awk -F '"' '{ print $2 }')
     if [ -z "$pinned_major" ]; then
         echo "ERROR: Could not read nvidia_driver_major_al2023 from variables.pkr.hcl"
-        exit 1
-    fi
-    dcgm_pinned_major=$(sed -n '/variable "dcgm_version_al2023" {/,/}/p' variables.pkr.hcl | grep "default" | awk -F '"' '{ print $2 }')
-    if [ -z "$dcgm_pinned_major" ]; then
-        echo "ERROR: Could not read dcgm_version_al2023 from variables.pkr.hcl"
         exit 1
     fi
 fi
@@ -164,10 +158,7 @@ if [[ $platform == al2023* ]]; then
         # version and all available within the pinned major, then intersect with GRID bucket locally.
         gpu_cmd_installed="dnf repoquery --installed --arch=x86_64 --queryformat '%{version}' nvidia-driver-cuda"
         gpu_cmd_all="dnf repoquery --releasever=latest --disableplugin=versionlock --arch=x86_64 --queryformat '%{version}' nvidia-driver-cuda | grep '^${pinned_major}[.]' | sort -V"
-        # Also query DCGM versions within its pinned major
-        dcgm_cmd_installed="dnf repoquery --installed --arch=x86_64 --queryformat '%{version}' datacenter-gpu-manager-${dcgm_pinned_major}-core"
-        dcgm_cmd_all="dnf repoquery --releasever=latest --disableplugin=versionlock --arch=x86_64 --queryformat '%{version}' datacenter-gpu-manager-${dcgm_pinned_major}-core | grep '^${dcgm_pinned_major}[.]' | sort -V"
-        command_params="commands=[\"echo INSTALLED=\$(${gpu_cmd_installed})\",\"echo REPO_VERSIONS=\$(${gpu_cmd_all} | paste -sd,)\",\"echo DCGM_INSTALLED=\$(${dcgm_cmd_installed})\",\"echo DCGM_REPO_VERSIONS=\$(${dcgm_cmd_all} | paste -sd,)\"]"
+        command_params="commands=[\"echo INSTALLED=\$(${gpu_cmd_installed})\",\"echo REPO_VERSIONS=\$(${gpu_cmd_all} | paste -sd,)\"]"
     else
         command_params="commands=[\"dnf --refresh check-upgrade --releasever=latest --disableplugin=versionlock $check_upgrade_options -q\"]"
     fi
@@ -263,16 +254,9 @@ if [ "$platform" = "al2023_gpu" ]; then
 
     installed_version=$(echo "$std_output" | grep "^INSTALLED=" | cut -d'=' -f2)
     repo_versions_csv=$(echo "$std_output" | grep "^REPO_VERSIONS=" | cut -d'=' -f2)
-    dcgm_installed_version=$(echo "$std_output" | grep "^DCGM_INSTALLED=" | cut -d'=' -f2)
-    dcgm_repo_versions_csv=$(echo "$std_output" | grep "^DCGM_REPO_VERSIONS=" | cut -d'=' -f2)
 
     if [ -z "$installed_version" ] || [ -z "$repo_versions_csv" ]; then
         echo "ERROR: Could not determine installed or available NVIDIA driver versions"
-        exit 1
-    fi
-
-    if [ -z "$dcgm_installed_version" ] || [ -z "$dcgm_repo_versions_csv" ]; then
-        echo "ERROR: Could not determine installed or available DCGM versions"
         exit 1
     fi
 
@@ -297,36 +281,14 @@ if [ "$platform" = "al2023_gpu" ]; then
         exit 1
     fi
 
-    # Determine the latest DCGM version available in the repo within the pinned major.
-    # DCGM only comes from the AL2023 repo (no S3 intersection needed).
-    dcgm_effective_version=$(echo "$dcgm_repo_versions_csv" | tr ',' '\n' | grep -v '^$' |
-        sort -V | tail -1)
-
-    if [ -z "$dcgm_effective_version" ]; then
-        echo "ERROR: No DCGM version found in repo for major ${dcgm_pinned_major}"
-        exit 1
-    fi
-
-    # Check if either NVIDIA or DCGM needs an update
-    nvidia_newer=$(printf '%s\n%s' "$installed_version" "$effective_version" | sort -V | tail -1)
-    dcgm_newer=$(printf '%s\n%s' "$dcgm_installed_version" "$dcgm_effective_version" | sort -V | tail -1)
-
-    nvidia_needs_update=false
-    dcgm_needs_update=false
-    [ "$nvidia_newer" != "$installed_version" ] && nvidia_needs_update=true
-    [ "$dcgm_newer" != "$dcgm_installed_version" ] && dcgm_needs_update=true
-
-    if [ "$nvidia_needs_update" = false ] && [ "$dcgm_needs_update" = false ]; then
+    # Only trigger a release if the effective version is newer than installed
+    newer=$(printf '%s\n%s' "$installed_version" "$effective_version" | sort -V | tail -1)
+    if [ "$newer" = "$installed_version" ]; then
         echo "false"
         exit 0
     fi
 
-    # Output format: "true <nvidia_version> [dcgm:<dcgm_version>]"
-    output="true $effective_version"
-    if [ "$dcgm_needs_update" = true ]; then
-        output="$output dcgm:$dcgm_effective_version"
-    fi
-    echo "$output"
+    echo "true $effective_version"
     exit 0
 fi
 
