@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -ex
 
+# DCGM is not available in air-gapped (ADC/ISO) regions
+if [ -n "$AIR_GAPPED" ]; then
+    echo "Air-gapped region, skipping DCGM installation"
+    exit 0
+fi
+
 ### Install DCGM core package (provides nv-hostengine and libdcgm.so)
 sudo dnf install -y "datacenter-gpu-manager-${DCGM_VERSION}-core"
 
@@ -24,4 +30,5 @@ sudo systemctl daemon-reload
 
 ### Enable DCGM and dcgm-init services
 sudo systemctl enable nvidia-dcgm
-sudo systemctl enable dcgm-init
+### TODO: remove the echo statement once we add dcgm-init into the RPM
+sudo systemctl enable dcgm-init || echo "dcgm-init service failed to start up"
