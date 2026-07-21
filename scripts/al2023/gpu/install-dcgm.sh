@@ -32,7 +32,7 @@ Wants=nvidia-persistenced.service
 
 [Service]
 ExecStart=
-ExecStart=/usr/bin/nv-hostengine -n --service-account nvidia-dcgm --domain-socket /run/nvidia-dcgm/nv-hostengine
+ExecStart=/usr/bin/nv-hostengine -n --service-account nvidia-dcgm --domain-socket /run/nvidia-dcgm/nv-hostengine -f /var/log/ecs/nv-hostengine.log
 RuntimeDirectory=nvidia-dcgm
 RuntimeDirectoryMode=0755
 EOF
