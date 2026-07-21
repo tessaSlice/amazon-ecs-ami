@@ -31,9 +31,6 @@ After=nvidia-persistenced.service
 Wants=nvidia-persistenced.service
 
 [Service]
-# /var/log/ecs is created by the ECS agent at runtime, not by the RPM or at
-# boot, so nvidia-dcgm can start before it exists. nv-hostengine will not
-# create the parent directory for its -f log file, so ensure it exists first.
 ExecStartPre=/usr/bin/mkdir -p /var/log/ecs
 ExecStart=
 ExecStart=/usr/bin/nv-hostengine -n --service-account nvidia-dcgm --domain-socket /run/nvidia-dcgm/nv-hostengine -f /var/log/ecs/nv-hostengine.log
