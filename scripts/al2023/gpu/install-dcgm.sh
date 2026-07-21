@@ -40,7 +40,7 @@ sudo systemctl daemon-reload
 
 ### Configure log rotation for DCGM logs
 sudo tee /etc/logrotate.d/nv-hostengine <<'EOF'
-/var/log/nv-hostengine.log {
+/var/log/ecs/nv-hostengine.log {
     size 5M
     rotate 1
     missingok
