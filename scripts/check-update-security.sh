@@ -290,8 +290,6 @@ if [ "$platform" = "al2023_gpu" ]; then
         exit 0
     fi
 
-    # Emit the NVIDIA driver version as a tagged token so the caller can classify
-    # it by prefix regardless of order, consistent with the cuda: tag below.
     echo "true nvidia:$effective_version"
     exit 0
 fi
