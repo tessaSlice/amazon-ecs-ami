@@ -312,8 +312,8 @@ if [ "$platform" = "al2023_gpu" ]; then
 
     # Check if NVIDIA needs an update (effective strictly newer than installed)
     nvidia_needs_update=false
-    nvidia_newer=$(printf '%s\n%s' "$nvidia_driver_installed_version" "$nvidia_driver_effective_version" | sort -V | tail -1)
-    [ "$nvidia_newer" != "$nvidia_driver_installed_version" ] && nvidia_needs_update=true
+    nvidia_driver_newer=$(printf '%s\n%s' "$nvidia_driver_installed_version" "$nvidia_driver_effective_version" | sort -V | tail -1)
+    [ "$nvidia_driver_newer" != "$nvidia_driver_installed_version" ] && nvidia_needs_update=true
 
     # Check if DCGM needs an update. If no DCGM version is available in the repo
     # (transient repo issue, major not yet published), skip DCGM rather than failing
