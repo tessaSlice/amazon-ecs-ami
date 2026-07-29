@@ -232,7 +232,6 @@ build {
 
   provisioner "shell" {
     environment_vars = [
-      "DCGM_MAJOR=${var.dcgm_major_al2023}",
       "AIR_GAPPED=${var.air_gapped}"
     ]
     script = "scripts/al2023/gpu/install-dcgm.sh"

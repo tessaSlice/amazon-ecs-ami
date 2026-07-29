@@ -17,13 +17,6 @@ if [ ! -f /usr/libexec/dcgm-init ]; then
     exit 0
 fi
 
-# DCGM_MAJOR is provided via the Packer environment (var.dcgm_major_al2023). Fail
-# loudly if it's missing rather than building a malformed package name below.
-if [[ -z $DCGM_MAJOR ]]; then
-    echo "ERROR: DCGM_MAJOR is not set (expected from var.dcgm_major_al2023)"
-    exit 1
-fi
-
 ### Determine DCGM version ###
 # The exact version is determined by the security check script
 # (check-update-security.sh) as the highest version available in the AL2023
@@ -34,14 +27,13 @@ if [[ -z $DCGM_FULL_VERSION ]]; then
     exit 1
 fi
 
-# Guard against drift between the pinned major (DCGM_MAJOR, from variables.pkr.hcl)
-# and the tracked full version (from NVIDIA_DRIVER_VERSION). Both feed the install
-# spec below, so if they disagree that spec would not resolve; fail with a clear
-# message instead. On a deliberate major bump, update both in the same change.
-if [[ $DCGM_FULL_VERSION != "${DCGM_MAJOR}."* ]]; then
-    echo "ERROR: DCGM full version '${DCGM_FULL_VERSION}' (NVIDIA_DRIVER_VERSION) is not within pinned major '${DCGM_MAJOR}' (DCGM_MAJOR)"
-    exit 1
-fi
+# The DCGM package name embeds the major (e.g. datacenter-gpu-manager-4-core),
+# so derive it from the tracked full version rather than passing it in
+# separately. This keeps a single source of truth (NVIDIA_DRIVER_VERSION) and
+# makes major/full-version drift structurally impossible. The producer
+# (check-update-security.sh) already guarantees the tracked version is within
+# the pinned major via its repoquery filter.
+DCGM_MAJOR="${DCGM_FULL_VERSION%%.*}"
 echo "Using DCGM version: ${DCGM_FULL_VERSION}"
 
 ### Install DCGM core package (provides nv-hostengine and libdcgm.so)
