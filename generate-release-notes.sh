@@ -82,6 +82,12 @@ validate_args() {
 }
 
 # Generates the relevant notes for the release.
+#
+# The package details are rendered as HTML tables (in the same style as the
+# amazon-eks-ami release notes) so that packages shared across every variant in
+# a family (containerd, runc) can be collapsed into a single cell with colspan,
+# while per-variant packages get one column each. Each OS family is wrapped in a
+# collapsible <details> block.
 generate_release_notes() {
     # Below file contains containerd version information for AL2023 and AL2 AMIs
     readonly variablespkr="variables.pkr.hcl"
@@ -104,16 +110,11 @@ generate_release_notes() {
         exit 1
     fi
 
-    # Prepare release notes
-    release_notes="### Source AMI release notes
----
-* [Amazon Linux 2023 release notes](https://docs.aws.amazon.com/linux/al2023/release-notes/relnotes.html)
-* [Amazon Linux 2 release notes](https://docs.aws.amazon.com/AL2/latest/relnotes/relnotes-al2.html)
-
-### Changelog
----
-https://github.com/aws/amazon-ecs-ami/blob/main/CHANGELOG.md#$ami_version
-"
+    # Accumulators, populated by collect_variant/render_section below.
+    #  - ami_details_rows: rows of the top-level "AMI Details" summary table.
+    #  - details_sections: the per-family collapsible package tables.
+    ami_details_rows=""
+    details_sections=""
 
     # AL2023
     if ! { is_ami_excluded "al2023" && is_ami_excluded "al2023arm" && is_ami_excluded "al2023neu" && is_ami_excluded "al2023gpu"; }; then
@@ -129,42 +130,24 @@ https://github.com/aws/amazon-ecs-ami/blob/main/CHANGELOG.md#$ami_version
             exit 1
         fi
 
-        # AL2023 Header
-        al2023_header="
-### Amazon ECS-optimized Amazon Linux 2023 AMI
----"
-        release_notes="${release_notes}${al2023_header}"
-
-        # Include AL2023 AMD64 release notes if there was an al2023 release
+        reset_section
+        # Include each AL2023 variant that was not excluded from the release.
         if ! is_ami_excluded "al2023"; then
-            # AL2023 AMD64 AMI details
-            read ami_name_al2023_x86 agent_version_al2023_x86 docker_version_al2023_x86 source_ami_name_al2023_x86 <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended")
-            add_ami_to_release_notes "#### AMD64" "$ami_name_al2023_x86" "$agent_version_al2023_x86" "$docker_version_al2023_x86" "$containerd_version_al2023" "$runc_version_al2023" "" "" "$source_ami_name_al2023_x86"
+            collect_variant "AL2023 AMD64" "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended" "" ""
         fi
-
-        # Include AL2023 ARM64 release notes if there was an al2023arm release
         if ! is_ami_excluded "al2023arm"; then
-            # AL2023 ARM64 AMI details
-            read ami_name_al2023_arm agent_version_al2023_arm docker_version_al2023_arm source_ami_name_al2023_arm <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended")
-            add_ami_to_release_notes "#### ARM64" "$ami_name_al2023_arm" "$agent_version_al2023_arm" "$docker_version_al2023_arm" "$containerd_version_al2023" "$runc_version_al2023" "" "" "$source_ami_name_al2023_arm"
+            collect_variant "AL2023 ARM64" "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended" "" ""
         fi
-
-        # Include AL2023 Neuron release notes if there was an al2023neu release
         if ! is_ami_excluded "al2023neu"; then
-            # AL2023 Neuron AMI details
-            read ami_name_al2023_neuron agent_version_al2023_neuron docker_version_al2023_neuron source_ami_name_al2023_neuron <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2023/neuron/recommended")
-            add_ami_to_release_notes "#### Neuron" "$ami_name_al2023_neuron" "$agent_version_al2023_neuron" "$docker_version_al2023_neuron" "$containerd_version_al2023" "$runc_version_al2023" "" "" "$source_ami_name_al2023_neuron"
+            collect_variant "AL2023 Neuron" "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2023/neuron/recommended" "" ""
         fi
-
-        # Include AL2023 GPU release notes if there was an al2023gpu release
         if ! is_ami_excluded "al2023gpu"; then
-            # AL2023 GPU AMI details
-            read ami_name_al2023_gpu agent_version_al2023_gpu docker_version_al2023_gpu source_ami_name_al2023_gpu <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2023/gpu/recommended")
-            add_ami_to_release_notes "#### GPU" "$ami_name_al2023_gpu" "$agent_version_al2023_gpu" "$docker_version_al2023_gpu" "$containerd_version_al2023" "$runc_version_al2023" "$AL2023_GPU_NVIDIA_VERSION" "" "$source_ami_name_al2023_gpu"
+            collect_variant "AL2023 GPU" "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2023/gpu/recommended" "$AL2023_GPU_NVIDIA_VERSION" ""
         fi
+        render_section "Amazon ECS-optimized Amazon Linux 2023 AMI" "$containerd_version_al2023" "$runc_version_al2023"
     fi
 
-    # AL2
+    # AL2 (the Kernel 4.14 and Kernel 5.10 families share containerd/runc versions)
     if ! { is_ami_excluded "al2" && is_ami_excluded "al2arm" && is_ami_excluded "al2inf" && is_ami_excluded "al2gpu" &&
         is_ami_excluded "al2kernel5dot10" && is_ami_excluded "al2kernel5dot10arm" &&
         is_ami_excluded "al2kernel5dot10inf" && is_ami_excluded "al2kernel5dot10gpu"; }; then
@@ -180,68 +163,61 @@ https://github.com/aws/amazon-ecs-ami/blob/main/CHANGELOG.md#$ami_version
             exit 1
         fi
 
-        # AL2 Header
-        al2_header="
-### Amazon ECS-optimized Amazon Linux 2 AMI
----"
-        release_notes="${release_notes}${al2_header}"
-
-        # Include AL2 AMD64 (Kernel 4.14) release notes if there was an al2 release
+        # AL2 Kernel 4.14
+        reset_section
         if ! is_ami_excluded "al2"; then
-            # AL2 AMD64 (Kernel 4.14) AMI details
-            read ami_name_al2_x86 agent_version_al2_x86 docker_version_al2_x86 source_ami_name_al2_x86 <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended")
-            add_ami_to_release_notes "#### AMD64 (Kernel 4.14)" "$ami_name_al2_x86" "$agent_version_al2_x86" "$docker_version_al2_x86" "$containerd_version" "$runc_version" "" "" "$source_ami_name_al2_x86"
+            collect_variant "AL2 AMD64 (Kernel 4.14)" "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended" "" ""
         fi
-
-        # Include AL2 ARM64 (Kernel 4.14) release notes if there was an al2arm release
         if ! is_ami_excluded "al2arm"; then
-            # AL2 ARM64 (Kernel 4.14) AMI details
-            read ami_name_al2_arm agent_version_al2_arm docker_version_al2_arm source_ami_name_al2_arm <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended")
-            add_ami_to_release_notes "#### ARM64 (Kernel 4.14)" "$ami_name_al2_arm" "$agent_version_al2_arm" "$docker_version_al2_arm" "$containerd_version" "$runc_version" "" "" "$source_ami_name_al2_arm"
+            collect_variant "AL2 ARM64 (Kernel 4.14)" "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended" "" ""
         fi
-
-        # Include AL2 Neuron (Kernel 4.14) release notes if there was an al2inf release
         if ! is_ami_excluded "al2inf"; then
-            # AL2 Neuron AMI details
-            read ami_name_al2_inf agent_version_al2_inf docker_version_al2_inf source_ami_name_al2_inf <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended")
-            add_ami_to_release_notes "#### Neuron (Kernel 4.14)" "$ami_name_al2_inf" "$agent_version_al2_inf" "$docker_version_al2_inf" "$containerd_version" "$runc_version" "" "" "$source_ami_name_al2_inf"
+            collect_variant "AL2 Neuron (Kernel 4.14)" "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended" "" ""
         fi
-
-        # Include AL2 GPU (Kernel 4.14) release notes if there was an al2gpu release
         if ! is_ami_excluded "al2gpu"; then
-            # AL2 GPU AMI details
-            read ami_name_al2_gpu agent_version_al2_gpu docker_version_al2_gpu source_ami_name_al2_gpu <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended")
-            add_ami_to_release_notes "#### GPU (Kernel 4.14)" "$ami_name_al2_gpu" "$agent_version_al2_gpu" "$docker_version_al2_gpu" "$containerd_version" "$runc_version" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION" "$source_ami_name_al2_gpu"
+            collect_variant "AL2 GPU (Kernel 4.14)" "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION"
         fi
+        render_section "Amazon ECS-optimized Amazon Linux 2 AMI (Kernel 4.14)" "$containerd_version" "$runc_version"
 
-        # Include AL2 AMD64 (Kernel 5.10) release notes if there was an al2kernel5dot10 release
+        # AL2 Kernel 5.10
+        reset_section
         if ! is_ami_excluded "al2kernel5dot10"; then
-            # AL2 AMD64 (Kernel 5.10) AMI details
-            read ami_name_al2_kernel_5_10 agent_version_al2_kernel_5_10 docker_version_al2_kernel_5_10 source_ami_name_al2_kernel_5_10 <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/recommended")
-            add_ami_to_release_notes "#### AMD64 (Kernel 5.10)" "$ami_name_al2_kernel_5_10" "$agent_version_al2_kernel_5_10" "$docker_version_al2_kernel_5_10" "$containerd_version" "$runc_version" "" "" "$source_ami_name_al2_kernel_5_10"
+            collect_variant "AL2 AMD64 (Kernel 5.10)" "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/recommended" "" ""
         fi
-
-        # Include AL2 ARM64 (Kernel 5.10) release notes if there was an al2kernel5dot10arm release
         if ! is_ami_excluded "al2kernel5dot10arm"; then
-            # AL2 ARM64 (Kernel 5.10) AMI details
-            read ami_name_al2_kernel_5_10_arm agent_version_al2_kernel_5_10_arm docker_version_al2_kernel_5_10_arm source_ami_name_al2_kernel_5_10_arm <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/arm64/recommended")
-            add_ami_to_release_notes "#### ARM64 (Kernel 5.10)" "$ami_name_al2_kernel_5_10_arm" "$agent_version_al2_kernel_5_10_arm" "$docker_version_al2_kernel_5_10_arm" "$containerd_version" "$runc_version" "" "" "$source_ami_name_al2_kernel_5_10_arm"
+            collect_variant "AL2 ARM64 (Kernel 5.10)" "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/arm64/recommended" "" ""
         fi
-
-        # Include AL2 Neuron (Kernel 5.10) release notes if there was an al2kernel5dot10inf release
         if ! is_ami_excluded "al2kernel5dot10inf"; then
-            # AL2 Neuron (Kernel 5.10) AMI details
-            read ami_name_al2_kernel_5_10_inf agent_version_al2_kernel_5_10_inf docker_version_al2_kernel_5_10_inf source_ami_name_al2_kernel_5_10_inf <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/inf/recommended")
-            add_ami_to_release_notes "#### Neuron (Kernel 5.10)" "$ami_name_al2_kernel_5_10_inf" "$agent_version_al2_kernel_5_10_inf" "$docker_version_al2_kernel_5_10_inf" "$containerd_version" "$runc_version" "" "" "$source_ami_name_al2_kernel_5_10_inf"
+            collect_variant "AL2 Neuron (Kernel 5.10)" "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/inf/recommended" "" ""
         fi
-
-        # Include AL2 GPU (Kernel 5.10) release notes if there was an al2kernel5dot10gpu release
         if ! is_ami_excluded "al2kernel5dot10gpu"; then
-            # AL2 GPU (Kernel 5.10) AMI details
-            read ami_name_al2_kernel_5_10_gpu agent_version_al2_kernel_5_10_gpu docker_version_al2_kernel_5_10_gpu source_ami_name_al2_kernel_5_10_gpu <<<$(get_ami_details "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/gpu/recommended")
-            add_ami_to_release_notes "#### GPU (Kernel 5.10)" "$ami_name_al2_kernel_5_10_gpu" "$agent_version_al2_kernel_5_10_gpu" "$docker_version_al2_kernel_5_10_gpu" "$containerd_version" "$runc_version" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION" "$source_ami_name_al2_kernel_5_10_gpu"
+            collect_variant "AL2 GPU (Kernel 5.10)" "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/gpu/recommended" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION"
         fi
+        render_section "Amazon ECS-optimized Amazon Linux 2 AMI (Kernel 5.10)" "$containerd_version" "$runc_version"
     fi
+
+    # Assemble the final release notes.
+    release_notes="### Source AMI release notes
+---
+* [Amazon Linux 2023 release notes](https://docs.aws.amazon.com/linux/al2023/release-notes/relnotes.html)
+* [Amazon Linux 2 release notes](https://docs.aws.amazon.com/AL2/latest/relnotes/relnotes-al2.html)
+
+### Changelog
+---
+https://github.com/aws/amazon-ecs-ami/blob/main/CHANGELOG.md#$ami_version
+"
+
+    if [ -n "$ami_details_rows" ]; then
+        release_notes="${release_notes}
+### AMI Details
+---
+<table>
+<tr><th>AMI Type</th><th>Source AMI Name</th></tr>${ami_details_rows}
+</table>
+"
+    fi
+
+    release_notes="${release_notes}${details_sections}"
 
     echo -n "$release_notes"
 }
@@ -265,44 +241,141 @@ get_ami_details() {
     echo "$ami_name $agent_version $docker_version $source_ami_name"
 }
 
-# Adds a given AMI variant to the release notes.
-add_ami_to_release_notes() {
-    local subheader="$1" # Optional (i.e., "" is allowed)
-    local name="$2"
-    local agent_ver="$3"
-    local docker_ver="$4"
-    local containerd_ver="$5"
-    local runc_ver="$6"
-    local nvidia_ver="$7" # Optional (i.e., "" is allowed)
-    local cuda_ver="$8"   # Optional (i.e., "" is allowed)
-    local source_name="$9"
+# Column accumulators for the family currently being rendered. Each index holds
+# the details for one AMI variant (one column of the family's package table).
+COL_LABELS=()
+COL_AMI_NAMES=()
+COL_AGENT=()
+COL_DOCKER=()
+COL_NVIDIA=()
+COL_CUDA=()
 
-    if [ -n "$subheader" ]; then
-        release_notes="${release_notes}
-${subheader}"
+# Clears the column accumulators before collecting a new family's variants.
+reset_section() {
+    COL_LABELS=()
+    COL_AMI_NAMES=()
+    COL_AGENT=()
+    COL_DOCKER=()
+    COL_NVIDIA=()
+    COL_CUDA=()
+}
+
+# Collects one AMI variant into the current family's columns and appends a row
+# to the top-level AMI Details summary table.
+#   $1 type_name   Fully-qualified AMI type; used in the AMI Details table.
+#   $2 col_label   Short column header within the family's package table.
+#   $3 ssm_path    SSM parameter name for the recommended AMI.
+#   $4 nvidia_ver  NVIDIA driver version, or "" if not applicable.
+#   $5 cuda_ver    CUDA version, or "" if not applicable.
+collect_variant() {
+    local type_name="$1"
+    local col_label="$2"
+    local ssm_path="$3"
+    local nvidia_ver="$4"
+    local cuda_ver="$5"
+
+    local name agent_ver docker_ver source_name
+    read name agent_ver docker_ver source_name <<<$(get_ami_details "$ssm_path")
+
+    COL_LABELS+=("$col_label")
+    COL_AMI_NAMES+=("$name")
+    COL_AGENT+=("$agent_ver")
+    COL_DOCKER+=("$docker_ver")
+    COL_NVIDIA+=("$nvidia_ver")
+    COL_CUDA+=("$cuda_ver")
+
+    ami_details_rows="${ami_details_rows}
+<tr><td>${type_name}</td><td>${source_name}</td></tr>"
+}
+
+# Renders the collected variants as an HTML package matrix inside a collapsible
+# <details> section. Packages that are identical across the whole family
+# (containerd, runc) are emitted once with a colspan; per-variant packages get
+# one <td> per column. Optional rows (NVIDIA, CUDA) are only emitted when at
+# least one variant in the family provides a value; cells that do not apply are
+# filled with an em dash.
+#   $1 title           <summary> label for the collapsible section.
+#   $2 containerd_ver  Shared containerd version for the family.
+#   $3 runc_ver        Shared runc version for the family.
+render_section() {
+    local title="$1"
+    local containerd_ver="$2"
+    local runc_ver="$3"
+
+    local n=${#COL_LABELS[@]}
+    if [ "$n" -eq 0 ]; then
+        return
     fi
 
-    release_notes="${release_notes}
-- AMI name: $name
-- ECS Agent version: [$agent_ver](https://github.com/aws/amazon-ecs-agent/releases/tag/v$agent_ver)
-- Docker version: $docker_ver
-- Containerd version: $containerd_ver
-- Runc version: $runc_ver"
+    # Only render the NVIDIA/CUDA rows if some variant in this family has them.
+    local show_nvidia=false
+    local show_cuda=false
+    local v
+    for v in "${COL_NVIDIA[@]}"; do
+        if [ -n "$v" ]; then show_nvidia=true; fi
+    done
+    for v in "${COL_CUDA[@]}"; do
+        if [ -n "$v" ]; then show_cuda=true; fi
+    done
 
-    if [ -n "$nvidia_ver" ]; then
-        release_notes="${release_notes}
-- NVIDIA driver version: $nvidia_ver"
+    details_sections="${details_sections}
+<details>
+<summary><b>${title}</b></summary>
+<table>
+<tr><th>Package</th>"
+    for v in "${COL_LABELS[@]}"; do
+        details_sections="${details_sections}<th>${v}</th>"
+    done
+    details_sections="${details_sections}</tr>"
+
+    details_sections="${details_sections}
+<tr><td>AMI name</td>"
+    for v in "${COL_AMI_NAMES[@]}"; do
+        details_sections="${details_sections}<td>${v}</td>"
+    done
+    details_sections="${details_sections}</tr>"
+
+    details_sections="${details_sections}
+<tr><td>ECS agent</td>"
+    for v in "${COL_AGENT[@]}"; do
+        details_sections="${details_sections}<td><a href=\"https://github.com/aws/amazon-ecs-agent/releases/tag/v${v}\">${v}</a></td>"
+    done
+    details_sections="${details_sections}</tr>"
+
+    details_sections="${details_sections}
+<tr><td>Docker</td>"
+    for v in "${COL_DOCKER[@]}"; do
+        details_sections="${details_sections}<td>${v}</td>"
+    done
+    details_sections="${details_sections}</tr>"
+
+    # containerd and runc are identical across the family: collapse via colspan.
+    details_sections="${details_sections}
+<tr><td>containerd</td><td colspan=\"${n}\">${containerd_ver}</td></tr>"
+    details_sections="${details_sections}
+<tr><td>runc</td><td colspan=\"${n}\">${runc_ver}</td></tr>"
+
+    if [ "$show_nvidia" = true ]; then
+        details_sections="${details_sections}
+<tr><td>NVIDIA driver</td>"
+        for v in "${COL_NVIDIA[@]}"; do
+            details_sections="${details_sections}<td>${v:-—}</td>"
+        done
+        details_sections="${details_sections}</tr>"
     fi
 
-    if [ -n "$cuda_ver" ]; then
-        release_notes="${release_notes}
-- CUDA version: $cuda_ver"
+    if [ "$show_cuda" = true ]; then
+        details_sections="${details_sections}
+<tr><td>CUDA</td>"
+        for v in "${COL_CUDA[@]}"; do
+            details_sections="${details_sections}<td>${v:-—}</td>"
+        done
+        details_sections="${details_sections}</tr>"
     fi
 
-    release_notes="${release_notes}
-- Source AMI name: $source_name"
-
-    release_notes="${release_notes}
+    details_sections="${details_sections}
+</table>
+</details>
 "
 }
 
