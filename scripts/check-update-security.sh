@@ -92,6 +92,25 @@ case "$platform" in
     ;;
 esac
 
+# Read pinned major versions for AL2023 GPU filtering. Done before launching the
+# instance: these only read variables.pkr.hcl, and failing here after launch would
+# leak a running instance (the cleanup trap is not installed until later, and an
+# explicit `exit` would not fire an ERR trap anyway).
+nvidia_driver_pinned_major=""
+dcgm_pinned_major=""
+if [ "$platform" = "al2023_gpu" ]; then
+    nvidia_driver_pinned_major=$(sed -n '/variable "nvidia_driver_major_al2023" {/,/}/p' variables.pkr.hcl | grep "default" | awk -F '"' '{ print $2 }')
+    if [ -z "$nvidia_driver_pinned_major" ]; then
+        echo "ERROR: Could not read nvidia_driver_major_al2023 from variables.pkr.hcl"
+        exit 1
+    fi
+    dcgm_pinned_major=$(sed -n '/variable "dcgm_major_al2023" {/,/}/p' variables.pkr.hcl | grep "default" | awk -F '"' '{ print $2 }')
+    if [ -z "$dcgm_pinned_major" ]; then
+        echo "ERROR: Could not read dcgm_major_al2023 from variables.pkr.hcl"
+        exit 1
+    fi
+fi
+
 # Query ssm to get latest ecs optimized ami
 ami_id=$(aws ssm get-parameters --names $ami_path --region us-west-2 | jq -r '.Parameters[0].Value' | jq -r '.image_id')
 
@@ -140,22 +159,6 @@ instance_id=$(aws ec2 run-instances \
     --user-data file://user_data.txt \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value='$platform-check-update-security'}]' |
     jq -r '.Instances[0].InstanceId')
-
-# Read pinned major versions for AL2023 GPU filtering
-nvidia_driver_pinned_major=""
-dcgm_pinned_major=""
-if [ "$platform" = "al2023_gpu" ]; then
-    nvidia_driver_pinned_major=$(sed -n '/variable "nvidia_driver_major_al2023" {/,/}/p' variables.pkr.hcl | grep "default" | awk -F '"' '{ print $2 }')
-    if [ -z "$nvidia_driver_pinned_major" ]; then
-        echo "ERROR: Could not read nvidia_driver_major_al2023 from variables.pkr.hcl"
-        exit 1
-    fi
-    dcgm_pinned_major=$(sed -n '/variable "dcgm_major_al2023" {/,/}/p' variables.pkr.hcl | grep "default" | awk -F '"' '{ print $2 }')
-    if [ -z "$dcgm_pinned_major" ]; then
-        echo "ERROR: Could not read dcgm_major_al2023 from variables.pkr.hcl"
-        exit 1
-    fi
-fi
 
 # check-update based on platform
 if [[ $platform == al2023* ]]; then
@@ -264,9 +267,12 @@ if [ "$platform" = "al2023_gpu" ]; then
         exit 1
     fi
 
-    nvidia_driver_installed_version=$(echo "$std_output" | grep "^INSTALLED=" | cut -d'=' -f2)
-    nvidia_driver_repo_versions_csv=$(echo "$std_output" | grep "^REPO_VERSIONS=" | cut -d'=' -f2)
-    dcgm_repo_versions_csv=$(echo "$std_output" | grep "^DCGM_REPO_VERSIONS=" | cut -d'=' -f2)
+    # `|| true` on each: grep exits 1 when the line is absent, which under
+    # `set -o pipefail` would abort the script before the explicit checks below
+    # could report a useful error. Let the assignments yield empty instead.
+    nvidia_driver_installed_version=$(echo "$std_output" | grep "^INSTALLED=" | cut -d'=' -f2 || true)
+    nvidia_driver_repo_versions_csv=$(echo "$std_output" | grep "^REPO_VERSIONS=" | cut -d'=' -f2 || true)
+    dcgm_repo_versions_csv=$(echo "$std_output" | grep "^DCGM_REPO_VERSIONS=" | cut -d'=' -f2 || true)
 
     if [ -z "$nvidia_driver_installed_version" ] || [ -z "$nvidia_driver_repo_versions_csv" ]; then
         echo "ERROR: Could not determine installed or available NVIDIA driver versions"

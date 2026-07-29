@@ -35,8 +35,9 @@ if [[ -z $DCGM_FULL_VERSION ]]; then
 fi
 
 # Guard against drift between the pinned major (DCGM_MAJOR, from variables.pkr.hcl)
-# and the tracked full version (from NVIDIA_DRIVER_VERSION). If they disagree the
-# package name below would not exist; fail with a clear message instead.
+# and the tracked full version (from NVIDIA_DRIVER_VERSION). Both feed the install
+# spec below, so if they disagree that spec would not resolve; fail with a clear
+# message instead. On a deliberate major bump, update both in the same change.
 if [[ $DCGM_FULL_VERSION != "${DCGM_MAJOR}."* ]]; then
     echo "ERROR: DCGM full version '${DCGM_FULL_VERSION}' (NVIDIA_DRIVER_VERSION) is not within pinned major '${DCGM_MAJOR}' (DCGM_MAJOR)"
     exit 1
@@ -44,7 +45,13 @@ fi
 echo "Using DCGM version: ${DCGM_FULL_VERSION}"
 
 ### Install DCGM core package (provides nv-hostengine and libdcgm.so)
-sudo dnf install -y "datacenter-gpu-manager-${DCGM_MAJOR}-core"
+# Pin the exact version rather than letting dnf resolve the newest within the
+# major, so the installed version always matches what NVIDIA_DRIVER_VERSION
+# records. The version suffix attaches to the full package name, so the major
+# stays part of the name and the tracked version appends after it. The epoch is
+# deliberately omitted: the bare version resolves correctly and hardcoding the
+# current epoch (1:) would break if it is ever bumped upstream.
+sudo dnf install -y "datacenter-gpu-manager-${DCGM_MAJOR}-core-${DCGM_FULL_VERSION}"
 
 ### Lock DCGM packages to prevent automatic updates
 sudo dnf versionlock 'datacenter-gpu-manager*'
