@@ -265,8 +265,8 @@ variable "nvidia_driver_major_al2023" {
   default     = "580"
 }
 
-variable "dcgm_version_al2023" {
+variable "dcgm_major_al2023" {
   type        = string
-  description = "DCGM major version for AL2023 GPU AMIs. Used to install the datacenter-gpu-manager-4-core package."
+  description = "Pinned DCGM major version for AL2023 GPU AMIs. Only DCGM versions within this major will be installed (e.g. datacenter-gpu-manager-<major>-core). The exact full version is tracked in NVIDIA_DRIVER_VERSION as dcgm_version_al2023."
   default     = "4"
 }

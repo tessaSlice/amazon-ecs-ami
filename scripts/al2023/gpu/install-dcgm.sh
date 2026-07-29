@@ -17,10 +17,36 @@ if [ ! -f /usr/libexec/dcgm-init ]; then
     exit 0
 fi
 
-### Install DCGM core package (provides nv-hostengine and libdcgm.so)
-sudo dnf install -y "datacenter-gpu-manager-${DCGM_VERSION}-core"
+# DCGM_MAJOR is provided via the Packer environment (var.dcgm_major_al2023). Fail
+# loudly if it's missing rather than building a malformed package name below.
+if [[ -z $DCGM_MAJOR ]]; then
+    echo "ERROR: DCGM_MAJOR is not set (expected from var.dcgm_major_al2023)"
+    exit 1
+fi
 
-### Lock DCGM packages to prevent updates that could break the libdcgm.so ABI
+### Determine DCGM version ###
+# The exact version is determined by the security check script
+# (check-update-security.sh) as the highest version available in the AL2023
+# repo within the pinned major, and tracked in the NVIDIA_DRIVER_VERSION file.
+DCGM_FULL_VERSION=$(grep "^dcgm_version_al2023" /tmp/NVIDIA_DRIVER_VERSION | awk -F'"' '{print $2}')
+if [[ -z $DCGM_FULL_VERSION ]]; then
+    echo "ERROR: Could not read dcgm_version_al2023 from /tmp/NVIDIA_DRIVER_VERSION"
+    exit 1
+fi
+
+# Guard against drift between the pinned major (DCGM_MAJOR, from variables.pkr.hcl)
+# and the tracked full version (from NVIDIA_DRIVER_VERSION). If they disagree the
+# package name below would not exist; fail with a clear message instead.
+if [[ $DCGM_FULL_VERSION != "${DCGM_MAJOR}."* ]]; then
+    echo "ERROR: DCGM full version '${DCGM_FULL_VERSION}' (NVIDIA_DRIVER_VERSION) is not within pinned major '${DCGM_MAJOR}' (DCGM_MAJOR)"
+    exit 1
+fi
+echo "Using DCGM version: ${DCGM_FULL_VERSION}"
+
+### Install DCGM core package (provides nv-hostengine and libdcgm.so)
+sudo dnf install -y "datacenter-gpu-manager-${DCGM_MAJOR}-core"
+
+### Lock DCGM packages to prevent automatic updates
 sudo dnf versionlock 'datacenter-gpu-manager*'
 
 ### Override nvidia-dcgm to use Unix domain socket instead of TCP
