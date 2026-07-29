@@ -239,6 +239,15 @@ sudo systemctl enable nvidia-fabricmanager
 # to maintain persistent software state in the NVIDIA driver.
 sudo systemctl enable nvidia-persistenced
 
+### Install DCGM (Data Center GPU Manager) ###
+# DCGM provides GPU telemetry and health monitoring APIs used by the ECS Agent
+# for emitting GPU metrics (including profiling: SM_ACTIVE, SM_OCCUPANCY, DRAM_ACTIVE).
+# datacenter-gpu-manager-4-core: nv-hostengine, libdcgm.so, dcgmi (~27 MB)
+# datacenter-gpu-manager-4-proprietary: libdcgmmoduleprofiling.so (~22 MB, required for profiling metrics)
+sudo dnf install -y datacenter-gpu-manager-4-core
+sudo systemctl enable nvidia-dcgm
+
 ### Cleanup Build-Time Configuration ###
 # Remove the hardcoded DKMS configuration to prevent it from being baked into the AMI
 sudo rm -f /etc/dkms/nvidia.conf
+
