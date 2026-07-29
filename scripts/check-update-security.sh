@@ -277,7 +277,6 @@ if [ "$platform" = "al2023_gpu" ]; then
     fi
 
     # DCGM isn't pre-installed, so use the version tracked in NVIDIA_DRIVER_VERSION
-    # as the baseline (empty on first-time tracking).
     dcgm_installed_version=$(grep "^dcgm_version_al2023" NVIDIA_DRIVER_VERSION | awk -F'"' '{print $2}' || true)
 
     # Get all GRID bucket versions within pinned major
