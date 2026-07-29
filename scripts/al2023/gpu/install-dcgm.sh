@@ -27,7 +27,7 @@ echo "Using DCGM version: ${DCGM_FULL_VERSION}"
 
 ### Install DCGM core package (provides nv-hostengine and libdcgm.so)
 # Pinned to the exact version so the AMI matches what NVIDIA_DRIVER_VERSION
-# records. Epoch omitted: an upstream epoch bump would break a hardcoded one.
+# records.
 sudo dnf install -y "datacenter-gpu-manager-${DCGM_MAJOR}-core-${DCGM_FULL_VERSION}"
 
 ### Lock DCGM packages to prevent automatic updates

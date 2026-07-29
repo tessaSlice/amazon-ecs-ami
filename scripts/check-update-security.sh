@@ -92,10 +92,7 @@ case "$platform" in
     ;;
 esac
 
-# Read pinned major versions for AL2023 GPU filtering. Done before launching the
-# instance: these only read variables.pkr.hcl, and failing here after launch would
-# leak a running instance (the cleanup trap is not installed until later, and an
-# explicit `exit` would not fire an ERR trap anyway).
+# Read pinned major versions for AL2023 GPU filtering.
 nvidia_driver_pinned_major=""
 dcgm_pinned_major=""
 if [ "$platform" = "al2023_gpu" ]; then
@@ -304,9 +301,7 @@ if [ "$platform" = "al2023_gpu" ]; then
         exit 1
     fi
 
-    # Determine the latest DCGM version available in the repo within the pinned major.
-    # DCGM only comes from the AL2023 repo (no S3 intersection needed). The `|| true`
-    # keeps `set -o pipefail` from aborting when grep filters out every (empty) field.
+    # Only trigger a release if the effective version is newer than installed
     dcgm_effective_version=$(echo "$dcgm_repo_versions_csv" | tr ',' '\n' | grep -v '^$' |
         sort -V | tail -1 || true)
 

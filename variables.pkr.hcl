@@ -267,6 +267,6 @@ variable "nvidia_driver_major_al2023" {
 
 variable "dcgm_major_al2023" {
   type        = string
-  description = "Pinned DCGM major version for AL2023 GPU AMIs. Used by check-update-security.sh to scope its repoquery to this major (e.g. datacenter-gpu-manager-<major>-core) when detecting updates. The exact full version selected is tracked in NVIDIA_DRIVER_VERSION as dcgm_version_al2023, from which install-dcgm.sh derives the major at build time."
+  description = "Pinned DCGM major version for AL2023 GPU AMIs. Only versions within this major will be installed."
   default     = "4"
 }
