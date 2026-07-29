@@ -110,10 +110,8 @@ generate_release_notes() {
         exit 1
     fi
 
-    # Accumulators, populated by collect_variant/render_section below.
-    #  - ami_details_rows: rows of the top-level "AMI Details" summary table.
-    #  - details_sections: the per-family collapsible package tables.
-    ami_details_rows=""
+    # Accumulator, populated by render_section below: the per-family collapsible
+    # package tables.
     details_sections=""
 
     # AL2023
@@ -133,16 +131,16 @@ generate_release_notes() {
         reset_section
         # Include each AL2023 variant that was not excluded from the release.
         if ! is_ami_excluded "al2023"; then
-            collect_variant "AL2023 AMD64" "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended" "" ""
+            collect_variant "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended" "" ""
         fi
         if ! is_ami_excluded "al2023arm"; then
-            collect_variant "AL2023 ARM64" "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended" "" ""
+            collect_variant "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended" "" ""
         fi
         if ! is_ami_excluded "al2023neu"; then
-            collect_variant "AL2023 Neuron" "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2023/neuron/recommended" "" ""
+            collect_variant "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2023/neuron/recommended" "" ""
         fi
         if ! is_ami_excluded "al2023gpu"; then
-            collect_variant "AL2023 GPU" "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2023/gpu/recommended" "$AL2023_GPU_NVIDIA_VERSION" ""
+            collect_variant "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2023/gpu/recommended" "$AL2023_GPU_NVIDIA_VERSION" ""
         fi
         render_section "Amazon ECS-optimized Amazon Linux 2023 AMI" "$containerd_version_al2023" "$runc_version_al2023"
     fi
@@ -166,32 +164,32 @@ generate_release_notes() {
         # AL2 Kernel 4.14
         reset_section
         if ! is_ami_excluded "al2"; then
-            collect_variant "AL2 AMD64 (Kernel 4.14)" "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended" "" ""
+            collect_variant "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended" "" ""
         fi
         if ! is_ami_excluded "al2arm"; then
-            collect_variant "AL2 ARM64 (Kernel 4.14)" "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended" "" ""
+            collect_variant "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended" "" ""
         fi
         if ! is_ami_excluded "al2inf"; then
-            collect_variant "AL2 Neuron (Kernel 4.14)" "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended" "" ""
+            collect_variant "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2/inf/recommended" "" ""
         fi
         if ! is_ami_excluded "al2gpu"; then
-            collect_variant "AL2 GPU (Kernel 4.14)" "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION"
+            collect_variant "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION"
         fi
         render_section "Amazon ECS-optimized Amazon Linux 2 AMI (Kernel 4.14)" "$containerd_version" "$runc_version"
 
         # AL2 Kernel 5.10
         reset_section
         if ! is_ami_excluded "al2kernel5dot10"; then
-            collect_variant "AL2 AMD64 (Kernel 5.10)" "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/recommended" "" ""
+            collect_variant "AMD64" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/recommended" "" ""
         fi
         if ! is_ami_excluded "al2kernel5dot10arm"; then
-            collect_variant "AL2 ARM64 (Kernel 5.10)" "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/arm64/recommended" "" ""
+            collect_variant "ARM64" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/arm64/recommended" "" ""
         fi
         if ! is_ami_excluded "al2kernel5dot10inf"; then
-            collect_variant "AL2 Neuron (Kernel 5.10)" "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/inf/recommended" "" ""
+            collect_variant "Neuron" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/inf/recommended" "" ""
         fi
         if ! is_ami_excluded "al2kernel5dot10gpu"; then
-            collect_variant "AL2 GPU (Kernel 5.10)" "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/gpu/recommended" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION"
+            collect_variant "GPU" "/aws/service/ecs/optimized-ami/amazon-linux-2/kernel-5.10/gpu/recommended" "$AL2_GPU_NVIDIA_VERSION" "$AL2_GPU_CUDA_VERSION"
         fi
         render_section "Amazon ECS-optimized Amazon Linux 2 AMI (Kernel 5.10)" "$containerd_version" "$runc_version"
     fi
@@ -206,16 +204,6 @@ generate_release_notes() {
 ---
 https://github.com/aws/amazon-ecs-ami/blob/main/CHANGELOG.md#$ami_version
 "
-
-    if [ -n "$ami_details_rows" ]; then
-        release_notes="${release_notes}
-### AMI Details
----
-<table>
-<tr><th>AMI Type</th><th>Source AMI Name</th></tr>${ami_details_rows}
-</table>
-"
-    fi
 
     release_notes="${release_notes}${details_sections}"
 
@@ -260,19 +248,16 @@ reset_section() {
     COL_CUDA=()
 }
 
-# Collects one AMI variant into the current family's columns and appends a row
-# to the top-level AMI Details summary table.
-#   $1 type_name   Fully-qualified AMI type; used in the AMI Details table.
-#   $2 col_label   Short column header within the family's package table.
-#   $3 ssm_path    SSM parameter name for the recommended AMI.
-#   $4 nvidia_ver  NVIDIA driver version, or "" if not applicable.
-#   $5 cuda_ver    CUDA version, or "" if not applicable.
+# Collects one AMI variant into the current family's columns.
+#   $1 col_label   Short column header within the family's package table.
+#   $2 ssm_path    SSM parameter name for the recommended AMI.
+#   $3 nvidia_ver  NVIDIA driver version, or "" if not applicable.
+#   $4 cuda_ver    CUDA version, or "" if not applicable.
 collect_variant() {
-    local type_name="$1"
-    local col_label="$2"
-    local ssm_path="$3"
-    local nvidia_ver="$4"
-    local cuda_ver="$5"
+    local col_label="$1"
+    local ssm_path="$2"
+    local nvidia_ver="$3"
+    local cuda_ver="$4"
 
     local name agent_ver docker_ver source_name
     read name agent_ver docker_ver source_name <<<$(get_ami_details "$ssm_path")
@@ -283,9 +268,6 @@ collect_variant() {
     COL_DOCKER+=("$docker_ver")
     COL_NVIDIA+=("$nvidia_ver")
     COL_CUDA+=("$cuda_ver")
-
-    ami_details_rows="${ami_details_rows}
-<tr><td>${type_name}</td><td>${source_name}</td></tr>"
 }
 
 # Renders the collected variants as an HTML package matrix inside a collapsible
